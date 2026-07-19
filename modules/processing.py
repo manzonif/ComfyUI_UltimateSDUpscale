@@ -266,30 +266,31 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
             image3=None
         )
         
-        # Extract the actual conditioning from NodeOutput if needed
-        if hasattr(result, 'value'):
-            conditioning = result.value
-            print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned NodeOutput with value type: {type(conditioning).__name__}")
-        else:
-            conditioning = result
-            print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned conditioning directly")
+        # Extract the actual conditioning from NodeOutput
+        # NodeOutput wraps the real conditioning data
+        conditioning = result.value if hasattr(result, 'value') else result
+        print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned: {type(conditioning).__name__}")
         
-        # Ensure conditioning is in the correct format: list of [emb, dict] tuples
+        # The conditioning should be a list of [emb, dict] tuples
+        # But it might be wrapped in another NodeOutput or have different structure
+        if hasattr(conditioning, 'value'):
+            conditioning = conditioning.value
+            print(f"[USDU Debug] ✓ Unwrapped nested NodeOutput: {type(conditioning).__name__}")
+        
+        # Ensure conditioning is a list
         if not isinstance(conditioning, (list, tuple)):
             conditioning = [conditioning]
-            print(f"[USDU Debug] ✓ Converted conditioning to list")
+            print(f"[USDU Debug] ✓ Converted to list")
         
-        # Check if the first element is a tuple/list with at least 2 elements
+        # Verify the structure: should be [(emb, dict), ...]
         if len(conditioning) > 0:
             first_elem = conditioning[0]
             if isinstance(first_elem, (list, tuple)) and len(first_elem) >= 2:
-                print(f"[USDU Debug] ✓ Conditioning format: [(emb, dict), ...] - first element type: {type(first_elem[0]).__name__}")
+                emb_type = type(first_elem[0]).__name__
+                print(f"[USDU Debug] ✓ Format: [(emb={emb_type}, dict), ...]")
             else:
-                print(f"[USDU Debug] ✓ Conditioning format: [{type(first_elem).__name__}, ...] - converting to standard format")
-                # Convert to standard format if needed
-                conditioning = [(conditioning[0], {})]
+                print(f"[USDU Debug] ⚠ First element is {type(first_elem).__name__}, not (emb, dict)")
         
-        # Get the number of elements in the conditioning
         num_elements = len(conditioning)
         print(f"[USDU Debug] ✓ Conditioning has {num_elements} elements")
         
