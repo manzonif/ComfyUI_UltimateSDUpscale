@@ -18,12 +18,17 @@ from typing import Callable, List, Optional, Tuple
 from crop_model_patch import crop_model_cond
 
 # Import TextEncodeQwenImageEditPlus for per-tile conditioning
+# Try to import from comfy_extras.nodes_qwen first, then fall back to nodes
 try:
-    from nodes import TextEncodeQwenImageEditPlus as _TextEncodeQwenImageEditPlus
-    print(f"[USDU Debug] Successfully imported TextEncodeQwenImageEditPlus from nodes")
-except ImportError as e:
-    _TextEncodeQwenImageEditPlus = None
-    print(f"[USDU Debug] Warning: Could not import TextEncodeQwenImageEditPlus from nodes: {e}")
+    from comfy_extras.nodes_qwen import TextEncodeQwenImageEditPlus as _TextEncodeQwenImageEditPlus
+    print(f"[USDU Debug] Successfully imported TextEncodeQwenImageEditPlus from comfy_extras.nodes_qwen")
+except ImportError:
+    try:
+        from nodes import TextEncodeQwenImageEditPlus as _TextEncodeQwenImageEditPlus
+        print(f"[USDU Debug] Successfully imported TextEncodeQwenImageEditPlus from nodes")
+    except ImportError as e:
+        _TextEncodeQwenImageEditPlus = None
+        print(f"[USDU Debug] Warning: Could not import TextEncodeQwenImageEditPlus: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -250,12 +255,15 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
     print(f"[USDU Debug] Prompt to use: '{prompt_to_use[:80]}...'")
     
     # Call TextEncodeQwenImageEditPlus to get conditioning for this tile
+    # Note: The node expects image1, image2, image3 as separate parameters
     try:
         conditioning = _TextEncodeQwenImageEditPlus.execute(
             clip=clip,
             prompt=tile_prompt if tile_prompt else "",
             vae=vae,
-            image1=tile_tensor
+            image1=tile_tensor,
+            image2=None,
+            image3=None
         )
         print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned conditioning with {len(conditioning)} elements")
         return conditioning
