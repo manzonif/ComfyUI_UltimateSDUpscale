@@ -274,11 +274,23 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
             conditioning = result
             print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned conditioning directly")
         
+        # Ensure conditioning is in the correct format: list of [emb, dict] tuples
+        if not isinstance(conditioning, (list, tuple)):
+            conditioning = [conditioning]
+            print(f"[USDU Debug] ✓ Converted conditioning to list")
+        
+        # Check if the first element is a tuple/list with at least 2 elements
+        if len(conditioning) > 0:
+            first_elem = conditioning[0]
+            if isinstance(first_elem, (list, tuple)) and len(first_elem) >= 2:
+                print(f"[USDU Debug] ✓ Conditioning format: [(emb, dict), ...] - first element type: {type(first_elem[0]).__name__}")
+            else:
+                print(f"[USDU Debug] ✓ Conditioning format: [{type(first_elem).__name__}, ...] - converting to standard format")
+                # Convert to standard format if needed
+                conditioning = [(conditioning[0], {})]
+        
         # Get the number of elements in the conditioning
-        if isinstance(conditioning, (list, tuple)):
-            num_elements = len(conditioning)
-        else:
-            num_elements = 1
+        num_elements = len(conditioning)
         print(f"[USDU Debug] ✓ Conditioning has {num_elements} elements")
         
         return conditioning
