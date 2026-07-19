@@ -257,7 +257,7 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
     # Call TextEncodeQwenImageEditPlus to get conditioning for this tile
     # Note: The node expects image1, image2, image3 as separate parameters
     try:
-        conditioning = _TextEncodeQwenImageEditPlus.execute(
+        result = _TextEncodeQwenImageEditPlus.execute(
             clip=clip,
             prompt=tile_prompt if tile_prompt else "",
             vae=vae,
@@ -265,7 +265,22 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
             image2=None,
             image3=None
         )
-        print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned conditioning with {len(conditioning)} elements")
+        
+        # Extract the actual conditioning from NodeOutput if needed
+        if hasattr(result, 'value'):
+            conditioning = result.value
+            print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned NodeOutput with value type: {type(conditioning).__name__}")
+        else:
+            conditioning = result
+            print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned conditioning directly")
+        
+        # Get the number of elements in the conditioning
+        if isinstance(conditioning, (list, tuple)):
+            num_elements = len(conditioning)
+        else:
+            num_elements = 1
+        print(f"[USDU Debug] ✓ Conditioning has {num_elements} elements")
+        
         return conditioning
     except Exception as e:
         print(f"[USDU Debug] ✗ Error in TextEncodeQwenImageEditPlus.execute: {e}")
