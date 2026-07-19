@@ -20,8 +20,10 @@ from crop_model_patch import crop_model_cond
 # Import TextEncodeQwenImageEditPlus for per-tile conditioning
 try:
     from nodes import TextEncodeQwenImageEditPlus as _TextEncodeQwenImageEditPlus
-except ImportError:
+    print(f"[USDU Debug] Successfully imported TextEncodeQwenImageEditPlus from nodes")
+except ImportError as e:
     _TextEncodeQwenImageEditPlus = None
+    print(f"[USDU Debug] Warning: Could not import TextEncodeQwenImageEditPlus from nodes: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +230,12 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
         Conditioning tuple from TextEncodeQwenImageEditPlus
     """
     print(f"[USDU Debug] get_per_tile_conditioning called - clip type: {type(clip).__name__}")
+    print(f"[USDU Debug] _TextEncodeQwenImageEditPlus class: {_TextEncodeQwenImageEditPlus}")
+    
+    # Check if the class has the execute method
+    if not hasattr(_TextEncodeQwenImageEditPlus, 'execute'):
+        print(f"[USDU Debug] ✗ TextEncodeQwenImageEditPlus does not have execute method")
+        return None
     
     # Convert PIL image to tensor if needed
     if isinstance(tile_image, Image.Image):
@@ -253,6 +261,8 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
         return conditioning
     except Exception as e:
         print(f"[USDU Debug] ✗ Error in TextEncodeQwenImageEditPlus.execute: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 
@@ -324,7 +334,10 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
             samples = sample_with_guider(p.guider, p.custom_sampler, p.custom_sigmas, p.seed, latent)
     else:
         # Get per-tile conditioning if clip is provided and TextEncodeQwenImageEditPlus is available
-        if p.clip is not None and _TextEncodeQwenImageEditPlus is not None:
+        _text_encoder_available = _TextEncodeQwenImageEditPlus is not None
+        print(f"[USDU Debug] Checking conditions: clip={p.clip is not None}, text_encoder_available={_text_encoder_available}")
+        
+        if p.clip is not None and _text_encoder_available:
             print(f"[USDU Debug] ✓ Using Qwen3-VL per-tile conditioning (clip provided, TextEncodeQwenImageEditPlus available)")
             positive_cropped = get_per_tile_conditioning(
                 p.clip, p.tile_prompt, tiles[0], tile_size, crop_region, init_image.size, p.vae
@@ -333,6 +346,8 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
             negative_cropped = positive_cropped
             print(f"[USDU Debug] ✓ Per-tile conditioning computed successfully")
         else:
+            if not _text_encoder_available:
+                print(f"[USDU Debug] TextEncodeQwenImageEditPlus is not available (type: {type(_TextEncodeQwenImageEditPlus)})")
             print("[USDU Debug] Using standard crop_cond for conditioning")
             # Crop conditioning
             positive_cropped = crop_cond(p.positive, crop_region, p.init_size, init_image.size, tile_size)
