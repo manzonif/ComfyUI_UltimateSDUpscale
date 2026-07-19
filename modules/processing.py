@@ -17,6 +17,12 @@ import os
 from typing import Callable, List, Optional, Tuple
 from crop_model_patch import crop_model_cond
 
+# Import TextEncodeQwenImageEditPlus for per-tile conditioning
+try:
+    from nodes import TextEncodeQwenImageEditPlus as _TextEncodeQwenImageEditPlus
+except ImportError:
+    _TextEncodeQwenImageEditPlus = None
+
 logger = logging.getLogger(__name__)
 
 if (not hasattr(Image, 'Resampling')):  # For older versions of Pillow
@@ -60,6 +66,8 @@ class StableDiffusionProcessing:
         custom_sigmas=None,
         batch_size=1,
         guider=None,
+        clip=None,
+        tile_prompt=None,
     ):
         # Variables used by the USDU script
         self.init_images = [init_img]
@@ -108,6 +116,10 @@ class StableDiffusionProcessing:
 
         # Other required A1111 variables for the USDU script that is currently unused in this script
         self.extra_generation_params = {}
+
+        # Per-tile conditioning with Qwen3-VL
+        self.clip = clip
+        self.tile_prompt = tile_prompt
 
         # Load config file for USDU
         config_path = os.path.join(os.path.dirname(__file__), os.pardir, 'config.json')
@@ -199,6 +211,39 @@ def sample_with_guider(guider, sampler, sigmas, seed, latent):
     return {"samples": samples}
 
 
+def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_region, init_size, vae):
+    """
+    Get conditioning for a single tile using TextEncodeQwenImageEditPlus.
+    
+    Args:
+        clip: The CLIP model to use for encoding
+        tile_prompt: Optional prompt text for the tile (if None, uses global positive prompt)
+        tile_image: PIL Image of the tile (already cropped and resized to tile_size)
+        tile_size: Tuple (width, height) of the tile size
+        crop_region: Tuple (x1, y1, x2, y2) of the crop region in the original image
+        init_size: Tuple (width, height) of the initial image size
+        vae: The VAE model for encoding the tile image
+    
+    Returns:
+        Conditioning tuple from TextEncodeQwenImageEditPlus
+    """
+    # Convert PIL image to tensor if needed
+    if isinstance(tile_image, Image.Image):
+        tile_tensor = pil_to_tensor(tile_image)
+    else:
+        tile_tensor = tile_image
+    
+    # Call TextEncodeQwenImageEditPlus to get conditioning for this tile
+    conditioning = _TextEncodeQwenImageEditPlus.execute(
+        clip=clip,
+        prompt=tile_prompt if tile_prompt else "",
+        vae=vae,
+        image1=tile_tensor
+    )
+    
+    return conditioning
+
+
 def process_images(p: StableDiffusionProcessing) -> Processed:
     # Where the main image generation happens in A1111
 
@@ -262,9 +307,17 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
         with crop_model_cond(p.model, crop_region, p.init_size, init_image.size, tile_size) as model:
             samples = sample_with_guider(p.guider, p.custom_sampler, p.custom_sigmas, p.seed, latent)
     else:
-        # Crop conditioning
-        positive_cropped = crop_cond(p.positive, crop_region, p.init_size, init_image.size, tile_size)
-        negative_cropped = crop_cond(p.negative, crop_region, p.init_size, init_image.size, tile_size)
+        # Get per-tile conditioning if clip is provided and TextEncodeQwenImageEditPlus is available
+        if p.clip is not None and _TextEncodeQwenImageEditPlus is not None:
+            positive_cropped = get_per_tile_conditioning(
+                p.clip, p.tile_prompt, tiles[0], tile_size, crop_region, init_image.size, p.vae
+            )
+            # For Krea2 and similar models, positive can also serve as negative (cfg=1)
+            negative_cropped = positive_cropped
+        else:
+            # Crop conditioning
+            positive_cropped = crop_cond(p.positive, crop_region, p.init_size, init_image.size, tile_size)
+            negative_cropped = crop_cond(p.negative, crop_region, p.init_size, init_image.size, tile_size)
 
         with crop_model_cond(p.model, crop_region, p.init_size, init_image.size, tile_size) as model:
             # Generate samples
