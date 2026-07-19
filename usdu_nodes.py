@@ -148,12 +148,17 @@ class UltimateSDUpscale:
         assert batch_size == 1 or force_uniform_tiles, "batch_size greater than 1 requires force_uniform_tiles to be True; all tiles in the batch must be the same size."
 
         # Processing
+        clip_to_use = clip if clip is not None else positive
+        logger.info("Creating StableDiffusionProcessing with clip=%s, tile_prompt='%s'", 
+                   "provided" if clip is not None else "None (using positive)",
+                   tile_prompt if tile_prompt and tile_prompt.strip() else "(empty, will use global prompt)")
+        
         sdprocessing = StableDiffusionProcessing(
             shared.batch[0], model, positive, negative, vae,
             seed, steps, cfg, sampler_name, scheduler, denoise, upscale_by, force_uniform_tiles, tiled_decode,
             tile_width, tile_height, redraw_mode, seam_fix_mode,
             custom_sampler, custom_sigmas, batch_size,
-            clip=clip if clip is not None else positive,  # Pass CLIP for per-tile conditioning
+            clip=clip_to_use,
             tile_prompt=tile_prompt if tile_prompt and tile_prompt.strip() else None,
         )
         logger.debug("StableDiffusionProcessing created with batch_size=%s", sdprocessing.batch_size)

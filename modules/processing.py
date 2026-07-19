@@ -230,8 +230,14 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
     # Convert PIL image to tensor if needed
     if isinstance(tile_image, Image.Image):
         tile_tensor = pil_to_tensor(tile_image)
+        logger.debug("Converted PIL tile image to tensor: shape=%s", tile_tensor.shape)
     else:
         tile_tensor = tile_image
+        logger.debug("Using provided tile tensor: shape=%s", tile_tensor.shape)
+    
+    # Determine the prompt to use
+    prompt_to_use = tile_prompt if tile_prompt and tile_prompt.strip() else "(using global positive prompt)"
+    logger.info("Calling TextEncodeQwenImageEditPlus with prompt: '%s'", prompt_to_use[:100])
     
     # Call TextEncodeQwenImageEditPlus to get conditioning for this tile
     conditioning = _TextEncodeQwenImageEditPlus.execute(
@@ -241,6 +247,7 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
         image1=tile_tensor
     )
     
+    logger.info("TextEncodeQwenImageEditPlus returned conditioning with %d elements", len(conditioning))
     return conditioning
 
 
@@ -257,6 +264,9 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
 
     # Locate the white region of the mask outlining the tile and add padding
     crop_region = get_crop_region(image_mask, p.inpaint_full_res_padding)
+
+    logger.info("Processing image with size=%s, tile_size=%sx%s, crop_region=%s",
+               init_image.size, p.width, p.height, crop_region)
 
     if p.uniform_tile_mode:
         # Expand the crop region to match the processing size ratio and then resize it to the processing size
@@ -309,15 +319,19 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
     else:
         # Get per-tile conditioning if clip is provided and TextEncodeQwenImageEditPlus is available
         if p.clip is not None and _TextEncodeQwenImageEditPlus is not None:
+            logger.info("Using Qwen3-VL per-tile conditioning for tile at crop_region=%s, tile_size=%s", 
+                       crop_region, tile_size)
             positive_cropped = get_per_tile_conditioning(
                 p.clip, p.tile_prompt, tiles[0], tile_size, crop_region, init_image.size, p.vae
             )
             # For Krea2 and similar models, positive can also serve as negative (cfg=1)
             negative_cropped = positive_cropped
+            logger.debug("Per-tile conditioning computed successfully")
         else:
             # Crop conditioning
             positive_cropped = crop_cond(p.positive, crop_region, p.init_size, init_image.size, tile_size)
             negative_cropped = crop_cond(p.negative, crop_region, p.init_size, init_image.size, tile_size)
+            logger.debug("Using standard crop_cond for conditioning")
 
         with crop_model_cond(p.model, crop_region, p.init_size, init_image.size, tile_size) as model:
             # Generate samples
@@ -365,6 +379,7 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
         shared.batch[i] = result
 
     processed = Processed(p, [shared.batch[0]], p.seed, "")
+    logger.info("Image processing completed successfully. Final image size: %s", shared.batch[0].size)
     return processed
 
 
