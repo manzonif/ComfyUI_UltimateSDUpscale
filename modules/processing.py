@@ -267,20 +267,16 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
         )
         
         # Extract the actual conditioning from NodeOutput
-        # Based on inspection: result is NodeOutput, result.value is also NodeOutput
+        # Based on inspection: result is NodeOutput, and result[0] gives the actual list
         print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned: {type(result).__name__}")
-        print(f"[USDU Debug]   result.value type: {type(result.value).__name__}")
         
-        # Unwrap the double NodeOutput layer
-        if hasattr(result, 'value') and hasattr(result.value, 'value'):
-            conditioning = result.value.value
-            print(f"[USDU Debug] ✓ Unwrapped double NodeOutput: {type(conditioning).__name__}")
-        elif hasattr(result, 'value'):
-            conditioning = result.value
-            print(f"[USDU Debug] ✓ Unwrapped single NodeOutput: {type(conditioning).__name__}")
+        # Access the first element using indexing [0]
+        if len(result) > 0:
+            conditioning = result[0]
+            print(f"[USDU Debug] ✓ Extracted conditioning via result[0]: {type(conditioning).__name__}")
         else:
             conditioning = result
-            print(f"[USDU Debug] ✓ No unwrapping needed: {type(conditioning).__name__}")
+            print(f"[USDU Debug] ✓ Using full result: {type(conditioning).__name__}")
         
         # Ensure conditioning is a list
         if not isinstance(conditioning, (list, tuple)):
