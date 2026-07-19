@@ -267,15 +267,19 @@ def get_per_tile_conditioning(clip, tile_prompt, tile_image, tile_size, crop_reg
         )
         
         # Extract the actual conditioning from NodeOutput
-        # NodeOutput wraps the real conditioning data
-        conditioning = result.value if hasattr(result, 'value') else result
-        print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned: {type(conditioning).__name__}")
+        # NodeOutput wraps the real conditioning data - may need multiple unwrapping
+        print(f"[USDU Debug] ✓ TextEncodeQwenImageEditPlus returned: {type(result).__name__}")
         
-        # The conditioning should be a list of [emb, dict] tuples
-        # But it might be wrapped in another NodeOutput or have different structure
-        if hasattr(conditioning, 'value'):
-            conditioning = conditioning.value
-            print(f"[USDU Debug] ✓ Unwrapped nested NodeOutput: {type(conditioning).__name__}")
+        # Unwrap NodeOutput layers until we get the actual list
+        while hasattr(result, 'value') and type(result.value).__name__ in ['NodeOutput', 'list']:
+            if type(result.value).__name__ == 'NodeOutput':
+                result = result.value
+                print(f"[USDU Debug]   Unwrapped NodeOutput layer")
+            else:
+                break
+        
+        conditioning = result
+        print(f"[USDU Debug] ✓ Final conditioning type: {type(conditioning).__name__}")
         
         # Ensure conditioning is a list
         if not isinstance(conditioning, (list, tuple)):
